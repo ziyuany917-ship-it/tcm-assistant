@@ -1,0 +1,7 @@
+{
+  "name": "爱你老己 (Love Yourself)",
+  "description": "A warm, healing, long-term companion for body and mind awareness. Focus on the present, cherish yourself.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

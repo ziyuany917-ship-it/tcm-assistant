@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="https://lucide.dev/icons/heart-handshake.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>爱你老己 | Love Yourself</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              warm: {
+                50: '#fffbf0',
+                100: '#f7e8d0',
+                200: '#eecfa1',
+                300: '#e0b06b',
+                400: '#d48c44',
+                500: '#b06d34',
+                600: '#8a4f22',
+                700: '#683818',
+                800: '#4a2610',
+                900: '#2b1406',
+              },
+              macaron: {
+                cream: '#FEF9E7',   // Creamy Yellow base
+                mint: '#E0F2F1',    // Mint Green
+                mintDark: '#00695C',
+                peach: '#FFEBEE',   // Peach/Pink
+                peachDark: '#C62828',
+                blue: '#E3F2FD',    // Sky Blue
+                blueDark: '#1565C0',
+                yellow: '#FFF9C4',  // Butter
+                yellowDark: '#F9A825',
+              },
+              paper: '#FEF9E7', 
+            },
+            fontFamily: {
+              serif: ['"Noto Serif SC"', 'serif'],
+              sans: ['"Quicksand"', '"Noto Sans SC"', 'sans-serif'], // Added Quicksand
+              rounded: ['"Quicksand"', 'sans-serif']
+            },
+            boxShadow: {
+              'sticker': '4px 4px 10px rgba(0,0,0,0.05), -1px -1px 0px rgba(255,255,255,0.8)',
+              'sticker-hover': '6px 6px 15px rgba(0,0,0,0.1), -1px -1px 0px rgba(255,255,255,0.8)',
+            }
+          }
+        }
+      }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        background-color: #FEF9E7;
+        color: #5D4037; /* Softer brown than pure black */
+        font-family: 'Quicksand', 'Noto Sans SC', sans-serif;
+      }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      /* Cinematic Fade In */
+      @keyframes cinematicFade {
+        from { opacity: 0; transform: scale(0.98); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      .animate-cinematic {
+        animation: cinematicFade 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+      }
+      
+      /* Cute Float Animation */
+      @keyframes float {
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-5px); }
+        100% { transform: translateY(0px); }
+      }
+      .animate-float {
+        animation: float 3s ease-in-out infinite;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.91.1"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
