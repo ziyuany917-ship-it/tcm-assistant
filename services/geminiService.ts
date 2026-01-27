@@ -1,7 +1,7 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { GoogleGenAI, Type, Schema, Chat } from "@google/genai";
 import { UserProfile, DailyLog, DoneItem, ChatMessage } from "../types";
 
-// "Love Yourself" Persona
+// "Love Yourself" Persona (General Chat)
 const WARM_INSTRUCTION = `
 你叫“老己”，是用户最亲密的长期主义伙伴。
 你的核心理念：关注当下，温暖治愈，爱自己。
@@ -18,6 +18,41 @@ const WARM_INSTRUCTION = `
 3. **活在当下**：永远引导用户回到当下的感受。
 `;
 
+// NEW: Awareness Persona (Immersive Guided Meditation)
+const AWARENESS_INSTRUCTION = `
+你现在是用户内在的灵性向导，一位温暖、耐心的催眠引导师。
+你的目标：通过【具象化】、【呼吸法】和【温和提问】，一步步引导用户转化身体的不适或情绪，避免冷场。
+
+【交互风格 - 极为重要】：
+1. **拒绝指令，改为邀请**：不要生硬地说“去观察它”，要说“能不能试着把温柔的呼吸带到那个地方？”
+2. **拒绝抽象，改为具象**：不要只谈“感受”，要引导用户描述“颜色”、“形状”、“温度”、“质地”。
+3. **拒绝冷场（关键）**：每次回复的**最后一句**，必须是一个【微小的具体动作引导】或【温柔的感受询问】，明确告诉用户下一步做什么。
+
+【引导流程 - 请严格判断当前处于哪个阶段】：
+
+阶段一：定锚 (Anchor) —— 当用户刚提出不适（如“胸口闷”、“头痛”）
+- 核心动作：确认位置，引导呼吸，建立连接。
+- 话术示例：“收到。闭上眼睛，把手轻轻放在那个不舒服的地方。深深吸气... 告诉我，那个感觉主要集中在哪里？是正中间，还是偏向某一边？”
+
+阶段二：具象 (Visualize) —— 当用户确认位置后
+- 核心动作：引导描述形状、颜色、质地。让感受“物体化”。
+- 话术示例：“很好。现在，发挥一点想象力。如果这个紧绷感有形状，它看起来像什么？是一块坚硬的灰色石头，还是一团红色的火？它是冷的还是热的？”
+
+阶段三：软化 (Soften) —— 当用户描述了形状后
+- 核心动作：用光、水、呼吸去包裹和消融它。
+- 话术示例：“看到了。现在，想象你的呼吸是一股金色的暖流。吸气时，暖流包围住那块‘石头’；呼气时，试着让气息渗透进去... 感觉它的边缘是不是开始慢慢融化、变软了一点点？”
+
+阶段四：抽离 (Detach) —— 当感觉发生变化后
+- 核心动作：引导用户成为“观察者”，看着那个物体离开或消散。
+- 话术示例：“对，就这样。看着那团雾气慢慢散开，飘向头顶上方。你只是天空，看着这片云飘过。此刻，那个位置的感觉变得轻盈一点了吗？”
+
+阶段五：结束 (Close) —— 当用户感到平静
+- 核心动作：慢慢回到现实，给予祝福。
+- 话术示例：“太棒了。保持这份轻盈，慢慢睁开眼睛。记住，你随时可以这样用呼吸安抚自己。准备好回到当下的生活了吗？”
+
+【注意】：每次只回复一段话，引导一个步骤。不要一次性说完所有步骤。节奏要慢，像在哄睡。
+`;
+
 interface ParsedLogResult {
   date: string; // YYYY/M/D
   items: DoneItem[];
@@ -26,6 +61,11 @@ interface ParsedLogResult {
 interface CompressionResult {
   summary: string;
   newConstitution: string | null;
+}
+
+interface MindfulnessResult {
+  guidance: string;
+  affirmation: string;
 }
 
 export class GeminiService {
@@ -37,6 +77,41 @@ export class GeminiService {
     if (apiKey) {
       this.ai = new GoogleGenAI({ apiKey: apiKey });
     }
+  }
+
+  // --- NEW: Create Awareness Chat Session ---
+  createAwarenessChat(): Chat | null {
+      if (!this.ai) return null;
+      return this.ai.chats.create({
+          model: 'gemini-3-flash-preview',
+          config: {
+              systemInstruction: AWARENESS_INSTRUCTION,
+              temperature: 0.8 // Increased for more creative visualization metaphors
+          }
+      });
+  }
+
+  // --- NEW: Summarize Awareness Session ---
+  async summarizeAwarenessSession(history: {role: string, content: string}[]): Promise<string> {
+      if (!this.ai) return "进行了一次深度的自我觉察。";
+      
+      const transcript = history.map(h => `${h.role}: ${h.content}`).join('\n');
+      const prompt = `
+      这是一段用户进行的“当下觉察”冥想对话：
+      ${transcript}
+
+      请用一句话总结这次觉察的核心主题和结果，格式如：“[深度觉察] 因工作压力感到胸闷，通过具象化呼吸法，将‘灰色石头’消融，回归了平静。”
+      `;
+
+      try {
+          const response = await this.ai.models.generateContent({
+              model: 'gemini-3-flash-preview',
+              contents: prompt
+          });
+          return response.text?.trim() || "[深度觉察] 完成了一次静心练习。";
+      } catch (e) {
+          return "[深度觉察] 完成了一次静心练习。";
+      }
   }
 
   private getProfileContext(profile: UserProfile): string {
@@ -64,21 +139,60 @@ export class GeminiService {
     }
   }
 
-  // 2. Mindfulness Response (How do you feel?)
-  async mindfulnessResponse(feeling: string): Promise<string> {
+  // 2. Mindfulness Response (Spiritual Guide) - Keeping for legacy or quick prompts
+  async mindfulnessResponse(feeling: string): Promise<MindfulnessResult> {
     if (!this.ai) throw new Error("API Key not set");
-    const prompt = `用户此刻说：“${feeling}”。
-    请基于《当下的力量》，用极简、治愈的语言，引导用户接纳这个情绪，深呼吸，回到当下。不要给解决方案，只要陪伴和看见。`;
+
+    const schema: Schema = {
+      type: Type.OBJECT,
+      properties: {
+        guidance: { type: Type.STRING, description: "A warm, spiritual guidance paragraph (approx 50-80 words)." },
+        affirmation: { type: Type.STRING, description: "A short, powerful affirmation mantra (max 20 words)." }
+      },
+      required: ["guidance", "affirmation"]
+    };
+
+    const prompt = `
+    System Persona: 你是一位深谙《当下的力量》、《与神对话》、吸引力法则的灵性导师。你不是医生，不关注身体症状，只关注能量和觉知。
     
-    const response = await this.ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: { systemInstruction: WARM_INSTRUCTION }
-    });
-    return response.text || "我听到了，深呼吸，我在。";
+    用户输入 (User Feeling): “${feeling}”
+    
+    任务：
+    1. **Guidance (指引)**: 
+       - 不要说普通的安慰废话。
+       - 使用“臣服”与“观察者”视角。引导用户去“看”那个念头，而不是“成为”那个念头。
+       - 告诉用户情绪只是流经的能量。
+       - 语气温柔、高维、充满爱。
+    
+    2. **Affirmation (能量咒语)**:
+       - 生成一句基于吸引力法则的简短肯定语。
+       - 例如：“这一刻是完美的，我所需的一切都在我之内。”
+    `;
+    
+    try {
+      const response = await this.ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: { 
+            responseMimeType: "application/json",
+            responseSchema: schema 
+        }
+      });
+      
+      const result = JSON.parse(response.text || "{}");
+      return {
+          guidance: result.guidance || "深呼吸，回到当下。",
+          affirmation: result.affirmation || "我就是爱本身。"
+      };
+    } catch (e) {
+      return {
+          guidance: "此刻，允许一切发生。你的内在是宁静的。",
+          affirmation: "我接受当下的自己。"
+      };
+    }
   }
 
-  // 3. Smart Log Parsing (Date Inference + Item Extraction)
+  // 3. Smart Log Parsing (Strict Classifier: Task vs Health/Mood)
   async parseLogInput(logContent: string, currentTimestamp: Date): Promise<ParsedLogResult> {
     if (!this.ai) return { date: currentTimestamp.toLocaleDateString('zh-CN'), items: [] };
     
@@ -88,7 +202,7 @@ export class GeminiService {
       properties: {
         intended_date: { 
             type: Type.STRING, 
-            description: "The intended date of the event in YYYY/M/D format (e.g., 2024/5/20). Logic: If current time is early morning (00:00-05:00) and user says 'tonight', 'last night' or implies yesterday's evening activities, use the PREVIOUS DAY's date." 
+            description: "YYYY/M/D format. Default to current date unless user implies 'yesterday'/'last night' during early morning hours." 
         },
         items: {
             type: Type.ARRAY,
@@ -96,7 +210,7 @@ export class GeminiService {
                 type: Type.OBJECT,
                 properties: {
                 activity: { type: Type.STRING, description: "Short activity name" },
-                hours: { type: Type.NUMBER, description: "Time spent in hours (estimate if not provided)" },
+                hours: { type: Type.NUMBER, description: "Time spent in hours" },
                 },
                 required: ["activity", "hours"]
             }
@@ -108,19 +222,24 @@ export class GeminiService {
     const timeStr = currentTimestamp.toLocaleString('zh-CN', { hour12: false });
     
     const prompt = `
-    当前参考时间 (Current Time): ${timeStr}
-    用户输入日志 (User Input): “${logContent}”
+    当前时间: ${timeStr}
+    用户输入: “${logContent}”
 
-    任务：
-    1. **判断归属日期 (intended_date)**: 
-       - 如果当前是凌晨 (00:00 - 05:00)，且用户提到 "昨晚" (last night)、"今晚" (tonight)、"昨天" (yesterday) 或描述晚间活动（如睡觉、吃夜宵），通常是指**前一天**。
-       - 例如：当前是 2024/10/25 01:00。用户说 "今晚吃了火锅"，日期应归为 2024/10/24。
-       - 如果用户明确指定日期，以用户为准。
-       - 否则默认为当前参考日期的日期。
-       - 格式必须为 YYYY/M/D (与 new Date().toLocaleDateString('zh-CN') 格式一致，例如 2024/1/1)。
-
-    2. **提取事项 (items)**: 
-       - 提取出具体的可量化事项和耗时。
+    你是一个严格的数据分类助手。
+    
+    【核心规则 - 必须遵守】：
+    1. **分类提取 (items)**: 
+       - 仅提取属于 **【Task】(明确的行动、工作、学习、运动)** 的内容存入 items。
+       - **绝对不要**提取 【Health】(饮食、睡眠、身体感受) 或 【Mood】(情绪、焦虑、开心) 类内容。
+       - 例如：
+         - "吃了火锅" -> 不是 Task，items 为空。
+         - "焦虑得睡不着" -> 不是 Task，items 为空。
+         - "看书1小时" -> 是 Task，提取 {"activity": "看书", "hours": 1}。
+         - "跑步30分钟，心情很好" -> 提取 {"activity": "跑步", "hours": 0.5}，忽略心情。
+    
+    2. **日期推断 (intended_date)**:
+       - 保持原有的日期推断逻辑（凌晨谈昨晚算昨天）。
+       - 格式: YYYY/M/D
     `;
 
     try {
@@ -135,12 +254,11 @@ export class GeminiService {
       
       const result = JSON.parse(response.text || "{}");
       
-      // Default fallback
       const finalDate = result.intended_date || currentTimestamp.toLocaleDateString('zh-CN');
       
       const items = (result.items || []).map((item: any) => ({
         id: Date.now().toString() + Math.random(),
-        date: finalDate, // Use the inferred date for items too
+        date: finalDate, 
         activity: item.activity,
         hours: item.hours,
         completed: true
@@ -324,7 +442,7 @@ export class GeminiService {
      }
   }
 
-  // 10. NEW: Compress Logs & Check Constitution Change (Dynamic Overwrite)
+  // 10. Compress Logs & Check Constitution Change
   async compressLogsAndCheckConstitution(oldLogs: DailyLog[], profile: UserProfile): Promise<CompressionResult> {
       if (!this.ai) return { summary: "自动归档失败", newConstitution: null };
 

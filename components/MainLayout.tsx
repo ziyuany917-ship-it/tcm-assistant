@@ -4,6 +4,7 @@ import HealthMindLog from './HealthMindLog';
 import GrowthTracks from './GrowthTracks';
 import UserProfileForm from './UserProfileForm';
 import ConsultationChat from './ConsultationChat';
+import AwarenessSpace from './AwarenessSpace'; // Import new component
 import { View, UserProfile, DailyLog, DoneItem, ChatMessage, Habit } from '../types';
 import { supabase } from '../services/supabaseClient';
 import { GeminiService } from '../services/geminiService';
@@ -28,6 +29,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ username, onLogout }) => {
   const [consultationMessages, setConsultationMessages] = useState<ChatMessage[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
 
+  // --- Awareness Mode State ---
+  const [isAwarenessMode, setIsAwarenessMode] = useState(false);
+
   // --- 1. Load Data from Cloud on Mount ---
   useEffect(() => {
     const loadUserData = async () => {
@@ -40,7 +44,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ username, onLogout }) => {
           .single();
 
         if (data) {
-          // Merge with defaults in case DB is partial
           if (data.profile) setProfile(data.profile);
           if (data.daily_logs) setLogs(data.daily_logs);
           if (data.done_items) setDoneItems(data.done_items);
@@ -48,7 +51,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ username, onLogout }) => {
           if (data.habits && Array.isArray(data.habits) && data.habits.length > 0) {
               setHabits(data.habits);
           } else {
-              // Default habits if none exist
               setHabits([
                 { id: '1', name: '早睡 (23:00)', history: {} },
                 { id: '2', name: '阅读 30分', history: {} },
@@ -57,10 +59,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ username, onLogout }) => {
           }
           if (data.settings?.apiKey) setApiKey(data.settings.apiKey);
           
-          // --- Trigger Smart Logic after load ---
           checkAndCompressLogs(data.daily_logs || [], data.profile || {}, data.settings?.apiKey);
         } else {
-             // New user defaults (if not handled in AuthPage)
              setHabits([
                 { id: '1', name: '早睡 (23:00)', history: {} },
                 { id: '2', name: '阅读 30分', history: {} },
@@ -79,16 +79,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ username, onLogout }) => {
 
   // --- 2. Smart Logic: Dynamic Overwrite & Auto Update ---
   const checkAndCompressLogs = async (currentLogs: DailyLog[], currentProfile: UserProfile, key: string) => {
-      if (!key) return; // Need AI to compress
+      if (!key) return; 
       
       const unsummarizedLogs = currentLogs.filter(l => !l.content.startsWith('【周结报】'));
 
       if (unsummarizedLogs.length >= 7) {
-          console.log("Triggering Weekly Compression...");
           const service = new GeminiService(key);
           const result = await service.compressLogsAndCheckConstitution(unsummarizedLogs, currentProfile);
 
-          // 1. Create new Summary Log
           const summaryLog: DailyLog = {
               id: 'summary-' + Date.now(),
               date: new Date().toLocaleDateString('zh-CN'),
@@ -97,20 +95,16 @@ const MainLayout: React.FC<MainLayoutProps> = ({ username, onLogout }) => {
               timestamp: Date.now()
           };
 
-          // 2. Filter out the old raw logs (Dynamic Overwrite)
           const keptLogs = currentLogs.filter(l => l.content.startsWith('【周结报】'));
-          const newLogList = [summaryLog, ...keptLogs]; // Newest summary top
+          const newLogList = [summaryLog, ...keptLogs]; 
 
           setLogs(newLogList);
 
-          // 3. Auto Update Constitution
           if (result.newConstitution) {
               const updatedProfile = { ...currentProfile, constitution: result.newConstitution };
               setProfile(updatedProfile);
-              alert(`✨ 老己发现你的体质有变化，已自动更新为：${result.newConstitution}`);
           }
           
-          // Force save immediately
           await saveDataToCloud({ daily_logs: newLogList, profile: result.newConstitution ? { ...currentProfile, constitution: result.newConstitution } : undefined });
       }
   };
@@ -138,7 +132,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ username, onLogout }) => {
       }
   };
 
-  // Watch for changes and save (Debounce 2s)
   useEffect(() => {
      if (isInitializing) return;
      const timer = setTimeout(() => {
@@ -147,6 +140,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ username, onLogout }) => {
      return () => clearTimeout(timer);
   }, [profile, logs, doneItems, consultationMessages, apiKey, habits]);
 
+  // --- Handle Awareness Exit ---
+  const handleAwarenessClose = (summary: string) => {
+      const newLog: DailyLog = {
+          id: Date.now().toString(),
+          date: new Date().toLocaleDateString('zh-CN'),
+          content: summary,
+          type: 'emotion',
+          timestamp: Date.now()
+      };
+      setLogs([newLog, ...logs]);
+      setIsAwarenessMode(false);
+  };
 
   // --- Routing ---
   const renderContent = () => {
@@ -165,6 +170,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ username, onLogout }) => {
                   logs={logs} setLogs={setLogs} 
                   doneItems={doneItems} setDoneItems={setDoneItems}
                   profile={profile} apiKey={apiKey} 
+                  onEnterAwareness={() => setIsAwarenessMode(true)} // Pass trigger
                />;
       case View.GROWTH:
         return <GrowthTracks 
@@ -189,7 +195,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ username, onLogout }) => {
   };
 
   return (
-    <div className="flex h-screen bg-warm-50 overflow-hidden font-sans text-warm-900 selection:bg-warm-200">
+    <div className="flex h-screen bg-warm-50 overflow-hidden font-sans text-warm-900 selection:bg-warm-200 relative">
+      {/* Full Screen Awareness Mode */}
+      {isAwarenessMode && (
+          <AwarenessSpace apiKey={apiKey} onClose={handleAwarenessClose} />
+      )}
+
       <Sidebar 
         currentView={currentView} 
         setCurrentView={setCurrentView}
@@ -206,7 +217,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ username, onLogout }) => {
           ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}
         `}
       >
-        {/* Sync Indicator */}
         <div className="absolute top-4 right-4 z-50 pointer-events-none">
             {isSyncing ? (
                 <span className="text-[10px] bg-white/50 backdrop-blur text-warm-400 px-2 py-1 rounded-full flex items-center shadow-sm">

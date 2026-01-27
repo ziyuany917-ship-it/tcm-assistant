@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { UserProfile, ChatMessage } from '../types';
 import { GeminiService } from '../services/geminiService';
-import { Save, User, Activity, FileText, AlertCircle, MessageCircle, Loader2, X } from 'lucide-react';
+import { Save, User, Activity, FileText, AlertCircle, MessageCircle, Loader2, X, CheckCircle2 } from 'lucide-react';
 
 interface UserProfileFormProps {
   profile: UserProfile;
@@ -15,6 +15,8 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({ profile, setProfile, 
   const [diagnosisChat, setDiagnosisChat] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [toastMsg, setToastMsg] = useState(''); // Toast state
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,9 +29,14 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({ profile, setProfile, 
     setLocalProfile(prev => ({ ...prev, [field]: value }));
   };
 
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(''), 3000);
+  };
+
   const handleSave = () => {
     setProfile(localProfile);
-    alert('✨ 身体说明书已更新！');
+    showToast('✨ 身体说明书已更新！');
   };
 
   const startDiagnosis = () => {
@@ -65,8 +72,17 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({ profile, setProfile, 
       } catch (e) { console.error(e); } finally { setIsLoading(false); }
   };
 
+  // Shared input style class
+  const inputClass = "w-full bg-warm-50 border-2 border-warm-100 rounded-xl p-3 text-warm-800 focus:outline-none focus:border-macaron-blue focus:bg-white focus:shadow-md hover:border-macaron-blue/50 hover:bg-white transition-all duration-300 font-medium";
+  const textareaClass = "w-full bg-warm-50 border-2 border-warm-100 rounded-xl p-3 text-warm-800 focus:outline-none focus:border-macaron-peachDark focus:bg-white focus:shadow-md hover:border-macaron-peachDark/50 hover:bg-white transition-all duration-300 font-medium resize-none";
+
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto h-full overflow-y-auto no-scrollbar relative bg-paper">
+       {/* Toast Notification */}
+       <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-[60] bg-macaron-blueDark text-white px-6 py-2 rounded-full shadow-lg transition-all duration-300 flex items-center space-x-2 ${toastMsg ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
+          <CheckCircle2 size={16} /> <span>{toastMsg}</span>
+       </div>
+
        <header className="mb-8 flex justify-between items-center">
         <div>
             <h2 className="text-3xl font-rounded font-bold text-warm-800 flex items-center">
@@ -95,7 +111,7 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({ profile, setProfile, 
                           <input 
                             value={localProfile.name} 
                             onChange={e => handleChange('name', e.target.value)}
-                            className="w-full bg-macaron-blue/10 border-2 border-transparent rounded-xl p-3 text-warm-800 focus:outline-none focus:border-macaron-blue transition-colors font-medium"
+                            className={inputClass}
                           />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
@@ -104,7 +120,7 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({ profile, setProfile, 
                               <input 
                                 value={localProfile.age} 
                                 onChange={e => handleChange('age', e.target.value)}
-                                className="w-full bg-macaron-blue/10 border-2 border-transparent rounded-xl p-3 text-warm-800 focus:outline-none focus:border-macaron-blue transition-colors font-medium"
+                                className={inputClass}
                               />
                           </div>
                           <div>
@@ -112,7 +128,7 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({ profile, setProfile, 
                               <select 
                                 value={localProfile.gender} 
                                 onChange={e => handleChange('gender', e.target.value)}
-                                className="w-full bg-macaron-blue/10 border-2 border-transparent rounded-xl p-3 text-warm-800 focus:outline-none focus:border-macaron-blue transition-colors font-medium"
+                                className={inputClass}
                               >
                                   <option value="">选择</option>
                                   <option value="male">男</option>
@@ -146,7 +162,7 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({ profile, setProfile, 
                             value={localProfile.constitution} 
                             onChange={e => handleChange('constitution', e.target.value)}
                             placeholder="如：痰湿质、气虚质"
-                            className="w-full bg-macaron-peach/10 border-2 border-transparent rounded-xl p-3 text-warm-800 focus:outline-none focus:border-macaron-peachDark transition-colors font-medium"
+                            className={inputClass}
                           />
                       </div>
                       <div>
@@ -156,7 +172,7 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({ profile, setProfile, 
                           <textarea 
                             value={localProfile.history} 
                             onChange={e => handleChange('history', e.target.value)}
-                            className="w-full bg-macaron-peach/10 border-2 border-transparent rounded-xl p-3 text-warm-800 focus:outline-none focus:border-macaron-peachDark transition-colors font-medium h-24 resize-none"
+                            className={`${textareaClass} h-24`}
                           />
                       </div>
                       <div>
@@ -166,7 +182,7 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({ profile, setProfile, 
                           <input 
                             value={localProfile.allergies} 
                             onChange={e => handleChange('allergies', e.target.value)}
-                            className="w-full bg-macaron-peach/10 border-2 border-transparent rounded-xl p-3 text-warm-800 focus:outline-none focus:border-macaron-peachDark transition-colors font-medium"
+                            className={inputClass}
                           />
                       </div>
                   </div>
