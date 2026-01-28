@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { View } from '../types';
 import { LayoutDashboard, Sprout, User, Menu, X, HeartHandshake, MessageCircleHeart, Key, LogOut, Trash2, AlertTriangle, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
@@ -31,6 +32,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   
   // Custom Modal State for Reset
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  // Sync tempKey when apiKey prop changes (e.g. after loading from cloud)
+  useEffect(() => {
+    setTempKey(apiKey);
+  }, [apiKey]);
 
   const menuItems = [
     { id: View.CONSULTATION, label: '解忧草本屋 🌿', icon: <MessageCircleHeart size={22} />, color: 'hover:bg-macaron-mint text-macaron-mintDark' },

@@ -25,6 +25,7 @@ export interface DailyLog {
   type: 'general' | 'emotion' | 'diet' | 'work' | 'diagnosis' | 'meditation';
   timestamp: number;
   image?: string; // Added to support images in logs
+  warning?: string; // Health risk warning from AI
 }
 
 // New structure for the Editable Done List

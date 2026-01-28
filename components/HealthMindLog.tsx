@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { DailyLog, DoneItem, UserProfile } from '../types';
 import { GeminiService } from '../services/geminiService';
-import { Image as ImageIcon, Sparkles, Loader2, PenTool, Calendar, TrendingUp, Sun, Moon, Trash2, CheckCircle2, AlertTriangle, Stethoscope, Wind } from 'lucide-react';
+import { Image as ImageIcon, Sparkles, Loader2, PenTool, Calendar, TrendingUp, Sun, Moon, Trash2, CheckCircle2, AlertTriangle, Stethoscope, Wind, Briefcase } from 'lucide-react';
 
 interface HealthMindLogProps {
   logs: DailyLog[];
@@ -12,24 +12,20 @@ interface HealthMindLogProps {
   profile: UserProfile;
   apiKey: string;
   onEnterAwareness: () => void;
+  onRequireAuth: (callback: () => void) => void;
 }
 
-const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems, setDoneItems, profile, apiKey, onEnterAwareness }) => {
+const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems, setDoneItems, profile, apiKey, onEnterAwareness, onRequireAuth }) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null); // State for image upload
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   
-  // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // States for Daily Insight / Reports
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [analysisTitle, setAnalysisTitle] = useState('');
   
-  // Toast state
   const [toastMsg, setToastMsg] = useState('');
-
-  // Delete Modal State
   const [logToDelete, setLogToDelete] = useState<string | null>(null);
   
   const today = new Date().toLocaleDateString('zh-CN');
@@ -57,10 +53,10 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
     const currentImage = selectedImage;
     
     setInput('');
-    setSelectedImage(null); // Clear input
+    setSelectedImage(null);
     setIsLoading(true);
 
-    // 1. Save Log Immediately (Optimistic)
+    // 1. Save Log Immediately (Optimistic / Offline)
     const tempId = Date.now().toString();
     const optimisticLog: DailyLog = {
       id: tempId,
@@ -70,10 +66,9 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
       timestamp: Date.now(),
       image: currentImage || undefined
     };
-    
-    // Functional update to safely add new log
     setLogs(prev => [optimisticLog, ...prev]);
 
+    // If no key, we just stop here (Offline mode), no modal interception needed for basic recording
     if (!apiKey) {
         setIsLoading(false);
         showToast("已记录 (离线)");
@@ -81,29 +76,30 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
     }
 
     try {
-      // Only extract tasks if there is text input. Gemini parseLogInput currently expects text.
       if (currentInput) {
           const service = new GeminiService(apiKey);
-          // 2. Classify & Parse
-          const result = await service.parseLogInput(currentInput, new Date());
+          const result = await service.parseLogInput(currentInput, new Date(), profile);
     
-          // If Tasks detected
+          let isWork = false;
           if (result.items && result.items.length > 0) {
+               isWork = true;
                setDoneItems([...result.items, ...doneItems]);
-               showToast(`已自动提取 ${result.items.length} 个成就 ✨`);
+               showToast(`已提取 ${result.items.length} 个成就 ✨`);
           } else {
                showToast("已记录流水");
           }
     
-          // Update date if AI inferred different date
-          if (result.date !== today) {
-                setLogs(prev => prev.map(log => {
-                    if (log.id === tempId) {
-                        return { ...log, date: result.date };
-                    }
-                    return log;
-                }));
-          }
+          setLogs(prev => prev.map(log => {
+              if (log.id === tempId) {
+                  return { 
+                      ...log, 
+                      date: result.date,
+                      type: isWork ? 'work' : 'general', 
+                      warning: result.riskWarning || undefined
+                  };
+              }
+              return log;
+          }));
       }
     } catch (e) {
       console.error(e);
@@ -112,11 +108,7 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
     }
   };
 
-  // Replace window.confirm with modal state
-  const requestDelete = (id: string) => {
-      setLogToDelete(id);
-  };
-
+  const requestDelete = (id: string) => { setLogToDelete(id); };
   const confirmDelete = () => {
       if (logToDelete) {
           setLogs(prevLogs => prevLogs.filter(l => l.id !== logToDelete));
@@ -125,93 +117,80 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
       }
   };
 
-  const handleDailyInsight = async () => {
-    if (!apiKey) { showToast("Key 还没设置呢~"); return; }
-    setIsLoading(true);
-    setAnalysisTitle('今日复盘');
-    try {
-      const todaysItems = doneItems.filter(i => i.date === today);
-      const service = new GeminiService(apiKey);
-      const insight = await service.generateDailyInsight(todaysLogs, todaysItems, profile);
-      setAnalysis(insight);
-    } catch(e) { console.error(e) } 
-    finally { setIsLoading(false); }
+  // Intercepted Action: Daily Insight
+  const handleDailyInsight = () => {
+    onRequireAuth(async () => {
+        setIsLoading(true);
+        setAnalysisTitle('今日复盘');
+        try {
+          const todaysItems = doneItems.filter(i => i.date === today);
+          const service = new GeminiService(apiKey);
+          const insight = await service.generateDailyInsight(todaysLogs, todaysItems, profile);
+          setAnalysis(insight);
+        } catch(e) { console.error(e) } 
+        finally { setIsLoading(false); }
+    });
   };
 
-  const handleGrowthReport = async (period: 'WEEKLY' | 'MONTHLY') => {
-      if (!apiKey) { showToast("Key 还没设置呢~"); return; }
-      setIsLoading(true);
-      setAnalysisTitle(period === 'WEEKLY' ? '周度成长报告' : '月度身心总结');
-      try {
-          const service = new GeminiService(apiKey);
-          const report = await service.generatePeriodSummary(logs, period, profile);
-          setAnalysis(report);
-      } catch(e) { console.error(e) }
-      finally { setIsLoading(false); }
+  // Intercepted Action: Growth Report
+  const handleGrowthReport = (period: 'WEEKLY' | 'MONTHLY') => {
+      onRequireAuth(async () => {
+          setIsLoading(true);
+          setAnalysisTitle(period === 'WEEKLY' ? '周度成长报告' : '月度身心总结');
+          try {
+              const service = new GeminiService(apiKey);
+              const report = await service.generatePeriodSummary(logs, period, profile);
+              setAnalysis(report);
+          } catch(e) { console.error(e) }
+          finally { setIsLoading(false); }
+      });
+  };
+
+  // Intercepted Action: Deep Awareness
+  const handleEnterAwareness = () => {
+      onRequireAuth(() => {
+          onEnterAwareness();
+      });
   };
 
   const getLogStyle = (type: DailyLog['type']) => {
       switch (type) {
-          case 'diagnosis':
-              return 'bg-macaron-mint/20 border-macaron-mint';
-          case 'meditation':
-              return 'bg-purple-50 border-purple-200';
-          case 'general':
-          default:
-              return 'bg-white border-transparent hover:border-macaron-blue';
+          case 'diagnosis': return 'bg-macaron-mint/20 border-macaron-mint';
+          case 'meditation': return 'bg-purple-50 border-purple-200';
+          case 'work': return 'bg-macaron-yellow/20 border-macaron-yellow';
+          default: return 'bg-white border-transparent hover:border-macaron-blue';
       }
   };
 
   const getLogIcon = (type: DailyLog['type']) => {
       switch (type) {
-          case 'diagnosis':
-              return <Stethoscope size={14} className="text-macaron-mintDark mr-1.5"/>;
-          case 'meditation':
-              return <Wind size={14} className="text-purple-500 mr-1.5"/>;
-          default:
-              return null;
+          case 'diagnosis': return <Stethoscope size={14} className="text-macaron-mintDark mr-1.5"/>;
+          case 'meditation': return <Wind size={14} className="text-purple-500 mr-1.5"/>;
+          case 'work': return <Briefcase size={14} className="text-macaron-yellowDark mr-1.5"/>;
+          default: return null;
       }
   };
 
   return (
     <div className="flex flex-col h-full max-w-4xl mx-auto p-4 md:p-8 space-y-6 overflow-y-auto no-scrollbar bg-paper relative">
-      {/* Toast Notification */}
       <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-[60] bg-warm-800 text-white px-6 py-2 rounded-full shadow-lg transition-all duration-300 ${toastMsg ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
-          <div className="flex items-center space-x-2 font-bold text-sm">
-              <CheckCircle2 size={16}/> <span>{toastMsg}</span>
-          </div>
+          <div className="flex items-center space-x-2 font-bold text-sm"><CheckCircle2 size={16}/> <span>{toastMsg}</span></div>
       </div>
 
-      {/* Custom Delete Confirmation Modal */}
       {logToDelete && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm animate-cinematic" onClick={() => setLogToDelete(null)}>
             <div className="bg-white rounded-[2rem] p-6 shadow-2xl border-4 border-white max-w-sm w-full relative overflow-hidden" onClick={e => e.stopPropagation()}>
                 <div className="absolute top-0 left-0 w-full h-2 bg-red-400/20"></div>
-                <h3 className="text-xl font-rounded font-bold text-warm-800 mb-2 flex items-center">
-                    <AlertTriangle className="text-red-400 mr-2" size={20}/> 确认删除
-                </h3>
-                <p className="text-warm-600 mb-6 text-sm leading-relaxed">
-                    这条记录将化为云烟，确定要丢弃它吗？
-                </p>
+                <h3 className="text-xl font-rounded font-bold text-warm-800 mb-2 flex items-center"><AlertTriangle className="text-red-400 mr-2" size={20}/> 确认删除</h3>
+                <p className="text-warm-600 mb-6 text-sm leading-relaxed">这条记录将化为云烟，确定要丢弃它吗？</p>
                 <div className="flex justify-end space-x-3">
-                    <button 
-                        onClick={() => setLogToDelete(null)}
-                        className="px-5 py-2.5 text-warm-500 hover:bg-warm-50 rounded-xl text-sm font-bold transition-colors"
-                    >
-                        再想想
-                    </button>
-                    <button 
-                        onClick={confirmDelete}
-                        className="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-bold shadow-md transition-transform active:scale-95"
-                    >
-                        确认删除
-                    </button>
+                    <button onClick={() => setLogToDelete(null)} className="px-5 py-2.5 text-warm-500 hover:bg-warm-50 rounded-xl text-sm font-bold transition-colors">再想想</button>
+                    <button onClick={confirmDelete} className="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-bold shadow-md transition-transform active:scale-95">确认删除</button>
                 </div>
             </div>
          </div>
       )}
 
-      {/* Header */}
       <header className="flex justify-between items-end">
         <div>
            <h2 className="text-3xl font-rounded font-bold text-warm-800">时光碎碎念 📝</h2>
@@ -227,19 +206,12 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
         </button>
       </header>
 
-      {/* Input Section */}
       <div className="space-y-4">
         <div className="bg-white p-6 rounded-[2rem] shadow-sticker border-2 border-white relative z-10 transition-all">
-            {/* Image Preview */}
             {selectedImage && (
                 <div className="relative w-fit mb-2">
                     <img src={selectedImage} alt="Preview" className="h-16 w-16 object-cover rounded-xl border border-warm-100" />
-                    <button 
-                        onClick={() => setSelectedImage(null)}
-                        className="absolute -top-1 -right-1 bg-white text-red-400 rounded-full p-0.5 shadow-sm border border-warm-100"
-                    >
-                        <Trash2 size={12}/>
-                    </button>
+                    <button onClick={() => setSelectedImage(null)} className="absolute -top-1 -right-1 bg-white text-red-400 rounded-full p-0.5 shadow-sm border border-warm-100"><Trash2 size={12}/></button>
                 </div>
             )}
 
@@ -251,27 +223,12 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
             />
             
             <div className="flex justify-between items-center mt-4 border-t border-warm-50 pt-3">
-                {/* Hidden File Input & Trigger Button */}
-                <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleImageSelect} 
-                    accept="image/*" 
-                    className="hidden"
-                />
-                <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-warm-400 hover:text-macaron-peachDark p-2 bg-warm-50 rounded-full hover:bg-macaron-peach transition-colors"
-                >
-                    <ImageIcon size={20}/>
-                </button>
+                <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden"/>
+                <button onClick={() => fileInputRef.current?.click()} className="text-warm-400 hover:text-macaron-peachDark p-2 bg-warm-50 rounded-full hover:bg-macaron-peach transition-colors"><ImageIcon size={20}/></button>
 
                 <div className="flex space-x-3">
                     <button 
-                        onClick={() => {
-                            if (!apiKey) { showToast("请先设置 Key"); return; }
-                            onEnterAwareness();
-                        }}
+                        onClick={handleEnterAwareness}
                         className="text-macaron-mintDark bg-macaron-mint/50 hover:bg-macaron-mint px-4 py-2 rounded-xl text-sm font-bold transition-colors flex items-center shadow-sm border border-transparent hover:border-macaron-mintDark"
                     >
                         <Sun size={16} className="mr-1"/> 深度觉察 (专注)
@@ -287,26 +244,16 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
             </div>
         </div>
         
-        {/* Growth Report Buttons */}
         <div className="flex justify-end space-x-3 px-2">
-            <button 
-                onClick={() => handleGrowthReport('WEEKLY')}
-                className="flex items-center text-xs text-warm-500 hover:text-white hover:bg-macaron-blueDark bg-macaron-blue/30 px-3 py-1.5 rounded-lg transition-colors font-bold"
-                disabled={isLoading}
-            >
+            <button onClick={() => handleGrowthReport('WEEKLY')} className="flex items-center text-xs text-warm-500 hover:text-white hover:bg-macaron-blueDark bg-macaron-blue/30 px-3 py-1.5 rounded-lg transition-colors font-bold" disabled={isLoading}>
                 <TrendingUp size={14} className="mr-1.5"/> 周报 (成长)
             </button>
-            <button 
-                onClick={() => handleGrowthReport('MONTHLY')}
-                className="flex items-center text-xs text-warm-500 hover:text-white hover:bg-macaron-peachDark bg-macaron-peach/50 px-3 py-1.5 rounded-lg transition-colors font-bold"
-                disabled={isLoading}
-            >
+            <button onClick={() => handleGrowthReport('MONTHLY')} className="flex items-center text-xs text-warm-500 hover:text-white hover:bg-macaron-peachDark bg-macaron-peach/50 px-3 py-1.5 rounded-lg transition-colors font-bold" disabled={isLoading}>
                 <Calendar size={14} className="mr-1.5"/> 月报 (身心)
             </button>
         </div>
       </div>
 
-      {/* AI Analysis (Reports/Insight) */}
       {analysis && (
           <div className="bg-gradient-to-br from-white to-macaron-cream p-6 rounded-[2rem] border-2 border-white shadow-sticker animate-cinematic relative overflow-hidden">
               <div className="absolute top-0 right-0 p-4 opacity-20 text-macaron-yellowDark"><Sparkles size={80}/></div>
@@ -314,56 +261,35 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
                   <span className="bg-macaron-yellow p-1.5 rounded-full mr-2 text-macaron-yellowDark"><Sparkles size={16}/></span> 
                   {analysisTitle}
               </h3>
-              <div className="prose prose-stone text-warm-700 leading-relaxed font-rounded whitespace-pre-wrap">
-                  {analysis}
-              </div>
-              <button 
-                onClick={() => setAnalysis(null)}
-                className="mt-4 text-xs text-warm-400 hover:text-warm-600"
-              >
-                  收起
-              </button>
+              <div className="prose prose-stone text-warm-700 leading-relaxed font-rounded whitespace-pre-wrap">{analysis}</div>
+              <button onClick={() => setAnalysis(null)} className="mt-4 text-xs text-warm-400 hover:text-warm-600">收起</button>
           </div>
       )}
       
-      {/* Log Stream */}
       <div className="space-y-4 pb-20">
            <h3 className="text-warm-400 font-bold text-xs uppercase tracking-wider pl-2 flex items-center justify-between">
                <span>今日流水</span>
                <span className="text-[10px] bg-warm-100 px-2 py-0.5 rounded-full">{todaysLogs.length} 条</span>
            </h3>
            {todaysLogs.length === 0 && <p className="text-warm-300 text-sm italic pl-2">还没有碎碎念...</p>}
-           
            {todaysLogs.map(log => (
-               <div key={log.id} className={`group p-4 rounded-2xl shadow-sm border flex items-start space-x-3 transition-all relative animate-cinematic ${getLogStyle(log.type)}`}>
-                   
-                   <span className={`text-xs font-bold mt-1 px-2 py-0.5 rounded-lg whitespace-nowrap flex items-center ${log.type === 'diagnosis' ? 'text-macaron-mintDark bg-white/50' : log.type === 'meditation' ? 'text-purple-600 bg-white/50' : 'text-macaron-blueDark bg-macaron-blue/20'}`}>
-                       {getLogIcon(log.type)}
-                       {new Date(log.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
-                   </span>
-                   
-                   <div className="flex-1 pr-6">
-                       {/* Image Display */}
-                       {log.image && (
-                           <div className="mb-2">
-                               <img src={log.image} alt="log attachment" className="rounded-lg h-32 w-auto object-cover border border-black/5" />
-                           </div>
-                       )}
-                       <p className="text-warm-800 text-sm leading-relaxed whitespace-pre-wrap">{log.content}</p>
+               <div key={log.id} className={`group flex flex-col p-4 rounded-2xl shadow-sm border transition-all relative animate-cinematic ${getLogStyle(log.type)}`}>
+                   <div className="flex items-start space-x-3">
+                       <span className={`text-xs font-bold mt-1 px-2 py-0.5 rounded-lg whitespace-nowrap flex items-center ${log.type === 'diagnosis' ? 'text-macaron-mintDark bg-white/50' : log.type === 'meditation' ? 'text-purple-600 bg-white/50' : log.type === 'work' ? 'text-macaron-yellowDark bg-macaron-yellow/50' : 'text-macaron-blueDark bg-macaron-blue/20'}`}>
+                           {getLogIcon(log.type)}
+                           {new Date(log.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                       </span>
+                       <div className="flex-1 pr-6">
+                           {log.image && (<div className="mb-2"><img src={log.image} alt="log attachment" className="rounded-lg h-32 w-auto object-cover border border-black/5" /></div>)}
+                           <p className="text-warm-800 text-sm leading-relaxed whitespace-pre-wrap">{log.content}</p>
+                       </div>
                    </div>
-                   
-                   {/* Delete Button - Triggers Custom Modal */}
-                   <button 
-                        onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            requestDelete(log.id);
-                        }}
-                        className="z-20 absolute top-1 right-1 p-2 text-warm-300 hover:text-red-500 hover:bg-red-50/80 rounded-xl transition-all opacity-100 md:opacity-0 group-hover:opacity-100"
-                        title="删除这条记录"
-                   >
-                       <Trash2 size={16} />
-                   </button>
+                   {log.warning && (
+                        <div className="mt-3 ml-2 md:ml-12 text-xs text-orange-700 bg-orange-50 px-3 py-2 rounded-xl border border-orange-100 flex items-start animate-fade-in shadow-sm">
+                            <AlertTriangle size={14} className="mr-2 mt-0.5 shrink-0 text-orange-500"/><span className="font-bold">{log.warning}</span>
+                        </div>
+                   )}
+                   <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); requestDelete(log.id); }} className="z-20 absolute top-1 right-1 p-2 text-warm-300 hover:text-red-500 hover:bg-red-50/80 rounded-xl transition-all opacity-100 md:opacity-0 group-hover:opacity-100" title="删除"><Trash2 size={16} /></button>
                </div>
            ))}
       </div>
