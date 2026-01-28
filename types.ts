@@ -1,3 +1,4 @@
+
 export interface UserProfile {
   name: string;
   age: string;
@@ -20,8 +21,10 @@ export interface DailyLog {
   id: string;
   date: string;
   content: string;
-  type: 'general' | 'emotion' | 'diet' | 'work';
+  // Added 'diagnosis' and 'meditation' per PRD requirements
+  type: 'general' | 'emotion' | 'diet' | 'work' | 'diagnosis' | 'meditation';
   timestamp: number;
+  image?: string; // Added to support images in logs
 }
 
 // New structure for the Editable Done List

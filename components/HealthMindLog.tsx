@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+
+import React, { useState, useRef } from 'react';
 import { DailyLog, DoneItem, UserProfile } from '../types';
 import { GeminiService } from '../services/geminiService';
-import { Image as ImageIcon, Sparkles, Loader2, PenTool, Calendar, TrendingUp, Sun, Moon, Trash2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Image as ImageIcon, Sparkles, Loader2, PenTool, Calendar, TrendingUp, Sun, Moon, Trash2, CheckCircle2, AlertTriangle, Stethoscope, Wind } from 'lucide-react';
 
 interface HealthMindLogProps {
   logs: DailyLog[];
@@ -16,6 +17,10 @@ interface HealthMindLogProps {
 const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems, setDoneItems, profile, apiKey, onEnterAwareness }) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null); // State for image upload
+  
+  // Refs
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // States for Daily Insight / Reports
   const [analysis, setAnalysis] = useState<string | null>(null);
@@ -35,10 +40,24 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
       setTimeout(() => setToastMsg(''), 3000);
   };
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleRecord = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() && !selectedImage) return;
     const currentInput = input;
+    const currentImage = selectedImage;
+    
     setInput('');
+    setSelectedImage(null); // Clear input
     setIsLoading(true);
 
     // 1. Save Log Immediately (Optimistic)
@@ -48,7 +67,8 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
       date: today,
       content: currentInput,
       type: 'general',
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      image: currentImage || undefined
     };
     
     // Functional update to safely add new log
@@ -61,26 +81,29 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
     }
 
     try {
-      const service = new GeminiService(apiKey);
-      // 2. Classify & Parse
-      const result = await service.parseLogInput(currentInput, new Date());
-
-      // If Tasks detected
-      if (result.items && result.items.length > 0) {
-           setDoneItems([...result.items, ...doneItems]);
-           showToast(`已自动提取 ${result.items.length} 个成就 ✨`);
-      } else {
-           showToast("已记录流水");
-      }
-
-      // Update date if AI inferred different date
-      if (result.date !== today) {
-            setLogs(prev => prev.map(log => {
-                if (log.id === tempId) {
-                    return { ...log, date: result.date };
-                }
-                return log;
-            }));
+      // Only extract tasks if there is text input. Gemini parseLogInput currently expects text.
+      if (currentInput) {
+          const service = new GeminiService(apiKey);
+          // 2. Classify & Parse
+          const result = await service.parseLogInput(currentInput, new Date());
+    
+          // If Tasks detected
+          if (result.items && result.items.length > 0) {
+               setDoneItems([...result.items, ...doneItems]);
+               showToast(`已自动提取 ${result.items.length} 个成就 ✨`);
+          } else {
+               showToast("已记录流水");
+          }
+    
+          // Update date if AI inferred different date
+          if (result.date !== today) {
+                setLogs(prev => prev.map(log => {
+                    if (log.id === tempId) {
+                        return { ...log, date: result.date };
+                    }
+                    return log;
+                }));
+          }
       }
     } catch (e) {
       console.error(e);
@@ -103,7 +126,7 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
   };
 
   const handleDailyInsight = async () => {
-    if (!apiKey) return alert("Key 还没设置呢~");
+    if (!apiKey) { showToast("Key 还没设置呢~"); return; }
     setIsLoading(true);
     setAnalysisTitle('今日复盘');
     try {
@@ -116,7 +139,7 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
   };
 
   const handleGrowthReport = async (period: 'WEEKLY' | 'MONTHLY') => {
-      if (!apiKey) return alert("Key 还没设置呢~");
+      if (!apiKey) { showToast("Key 还没设置呢~"); return; }
       setIsLoading(true);
       setAnalysisTitle(period === 'WEEKLY' ? '周度成长报告' : '月度身心总结');
       try {
@@ -125,6 +148,29 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
           setAnalysis(report);
       } catch(e) { console.error(e) }
       finally { setIsLoading(false); }
+  };
+
+  const getLogStyle = (type: DailyLog['type']) => {
+      switch (type) {
+          case 'diagnosis':
+              return 'bg-macaron-mint/20 border-macaron-mint';
+          case 'meditation':
+              return 'bg-purple-50 border-purple-200';
+          case 'general':
+          default:
+              return 'bg-white border-transparent hover:border-macaron-blue';
+      }
+  };
+
+  const getLogIcon = (type: DailyLog['type']) => {
+      switch (type) {
+          case 'diagnosis':
+              return <Stethoscope size={14} className="text-macaron-mintDark mr-1.5"/>;
+          case 'meditation':
+              return <Wind size={14} className="text-purple-500 mr-1.5"/>;
+          default:
+              return null;
+      }
   };
 
   return (
@@ -184,18 +230,46 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
       {/* Input Section */}
       <div className="space-y-4">
         <div className="bg-white p-6 rounded-[2rem] shadow-sticker border-2 border-white relative z-10 transition-all">
+            {/* Image Preview */}
+            {selectedImage && (
+                <div className="relative w-fit mb-2">
+                    <img src={selectedImage} alt="Preview" className="h-16 w-16 object-cover rounded-xl border border-warm-100" />
+                    <button 
+                        onClick={() => setSelectedImage(null)}
+                        className="absolute -top-1 -right-1 bg-white text-red-400 rounded-full p-0.5 shadow-sm border border-warm-100"
+                    >
+                        <Trash2 size={12}/>
+                    </button>
+                </div>
+            )}
+
             <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="📝 吃了什么？做了什么？(AI会自动提取到“元气养成记”)..."
                 className="w-full h-24 p-2 resize-none outline-none text-warm-800 placeholder-warm-300 bg-transparent text-lg font-rounded"
             />
+            
             <div className="flex justify-between items-center mt-4 border-t border-warm-50 pt-3">
-                <button className="text-warm-400 hover:text-macaron-peachDark p-2 bg-warm-50 rounded-full hover:bg-macaron-peach transition-colors"><ImageIcon size={20}/></button>
+                {/* Hidden File Input & Trigger Button */}
+                <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleImageSelect} 
+                    accept="image/*" 
+                    className="hidden"
+                />
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-warm-400 hover:text-macaron-peachDark p-2 bg-warm-50 rounded-full hover:bg-macaron-peach transition-colors"
+                >
+                    <ImageIcon size={20}/>
+                </button>
+
                 <div className="flex space-x-3">
                     <button 
                         onClick={() => {
-                            if (!apiKey) { alert("请先设置 Key"); return; }
+                            if (!apiKey) { showToast("请先设置 Key"); return; }
                             onEnterAwareness();
                         }}
                         className="text-macaron-mintDark bg-macaron-mint/50 hover:bg-macaron-mint px-4 py-2 rounded-xl text-sm font-bold transition-colors flex items-center shadow-sm border border-transparent hover:border-macaron-mintDark"
@@ -204,8 +278,8 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
                     </button>
                     <button 
                         onClick={handleRecord}
-                        disabled={isLoading}
-                        className="bg-macaron-peachDark hover:bg-red-600 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-md transition-all flex items-center hover:scale-105"
+                        disabled={isLoading || (!input.trim() && !selectedImage)}
+                        className="bg-macaron-peachDark hover:bg-red-600 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-md transition-all flex items-center hover:scale-105 disabled:opacity-50 disabled:scale-100"
                     >
                         <PenTool size={16} className="mr-2"/> 记录
                     </button>
@@ -261,11 +335,20 @@ const HealthMindLog: React.FC<HealthMindLogProps> = ({ logs, setLogs, doneItems,
            {todaysLogs.length === 0 && <p className="text-warm-300 text-sm italic pl-2">还没有碎碎念...</p>}
            
            {todaysLogs.map(log => (
-               <div key={log.id} className="group bg-white p-4 rounded-2xl shadow-sm border border-transparent hover:border-macaron-blue flex items-start space-x-3 transition-all relative animate-cinematic">
-                   <span className="text-xs font-bold text-macaron-blueDark mt-1 bg-macaron-blue/20 px-2 py-0.5 rounded-lg whitespace-nowrap">
+               <div key={log.id} className={`group p-4 rounded-2xl shadow-sm border flex items-start space-x-3 transition-all relative animate-cinematic ${getLogStyle(log.type)}`}>
+                   
+                   <span className={`text-xs font-bold mt-1 px-2 py-0.5 rounded-lg whitespace-nowrap flex items-center ${log.type === 'diagnosis' ? 'text-macaron-mintDark bg-white/50' : log.type === 'meditation' ? 'text-purple-600 bg-white/50' : 'text-macaron-blueDark bg-macaron-blue/20'}`}>
+                       {getLogIcon(log.type)}
                        {new Date(log.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
                    </span>
+                   
                    <div className="flex-1 pr-6">
+                       {/* Image Display */}
+                       {log.image && (
+                           <div className="mb-2">
+                               <img src={log.image} alt="log attachment" className="rounded-lg h-32 w-auto object-cover border border-black/5" />
+                           </div>
+                       )}
                        <p className="text-warm-800 text-sm leading-relaxed whitespace-pre-wrap">{log.content}</p>
                    </div>
                    

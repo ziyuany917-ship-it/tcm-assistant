@@ -1,19 +1,25 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage, UserProfile } from '../types';
+import { ChatMessage, UserProfile, DailyLog } from '../types';
 import { GeminiService } from '../services/geminiService';
-import { Send, Image as ImageIcon, Loader2, Trash2, MessageCircleHeart } from 'lucide-react';
+import { Send, Image as ImageIcon, Loader2, Trash2, MessageCircleHeart, CheckCircle2 } from 'lucide-react';
 
 interface ConsultationChatProps {
   profile: UserProfile;
   apiKey: string;
   messages: ChatMessage[];
   setMessages: (msgs: ChatMessage[]) => void;
+  // Added props for Data Unification
+  logs: DailyLog[];
+  setLogs: (logs: DailyLog[]) => void;
 }
 
-const ConsultationChat: React.FC<ConsultationChatProps> = ({ profile, apiKey, messages, setMessages }) => {
+const ConsultationChat: React.FC<ConsultationChatProps> = ({ profile, apiKey, messages, setMessages, logs, setLogs }) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [showSyncToast, setShowSyncToast] = useState(false); // State for sync feedback
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -35,7 +41,13 @@ const ConsultationChat: React.FC<ConsultationChatProps> = ({ profile, apiKey, me
   const handleSend = async () => {
     if ((!input.trim() && !selectedImage) || isLoading) return;
     if (!apiKey) {
-      alert("请先在左侧栏底部设置 Google API Key");
+      const warnMsg: ChatMessage = {
+          id: Date.now().toString(),
+          role: 'model',
+          content: "🔑 请先在左侧栏底部设置 Google API Key 哦，否则老己无法思考呢。",
+          timestamp: Date.now()
+      };
+      setMessages([...messages, warnMsg]);
       return;
     }
 
@@ -49,12 +61,17 @@ const ConsultationChat: React.FC<ConsultationChatProps> = ({ profile, apiKey, me
 
     const updatedMessages = [...messages, newMessage];
     setMessages(updatedMessages);
+    
+    // Capture state for logging
+    const userPrompt = input;
+    const userImage = selectedImage;
+
     setInput('');
     setIsLoading(true);
 
     try {
       const service = new GeminiService(apiKey);
-      const responseText = await service.analyzeSymptom(input, profile, selectedImage || undefined);
+      const responseText = await service.analyzeSymptom(userPrompt, profile, userImage || undefined);
 
       const botMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -63,6 +80,26 @@ const ConsultationChat: React.FC<ConsultationChatProps> = ({ profile, apiKey, me
         timestamp: Date.now()
       };
       setMessages([...updatedMessages, botMessage]);
+
+      // --- DATA UNIFICATION: SYNC TO DAILY LOGS ---
+      // Automatically save the diagnosis interaction to the main journal
+      const diagnosisLog: DailyLog = {
+          id: 'diag-' + Date.now().toString(),
+          date: new Date().toLocaleDateString('zh-CN'),
+          content: `【症状描述】\n${userPrompt}\n\n【老中医建议】\n${responseText}`,
+          type: 'diagnosis', // Distinct type
+          timestamp: Date.now(),
+          image: userImage || undefined // Save the image to the log too
+      };
+      
+      // Update logs state
+      const newLogs = [diagnosisLog, ...logs];
+      setLogs(newLogs);
+      
+      // Trigger Toast
+      setShowSyncToast(true);
+      setTimeout(() => setShowSyncToast(false), 3000);
+
     } catch (error) {
       console.error(error);
       const errorMessage: ChatMessage = {
@@ -79,7 +116,13 @@ const ConsultationChat: React.FC<ConsultationChatProps> = ({ profile, apiKey, me
   };
 
   return (
-    <div className="flex flex-col h-full max-w-5xl mx-auto md:p-6 overflow-hidden">
+    <div className="flex flex-col h-full max-w-5xl mx-auto md:p-6 overflow-hidden relative">
+      {/* Sync Toast Notification */}
+      <div className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-50 bg-macaron-mintDark text-white px-4 py-2 rounded-full shadow-lg transition-all duration-500 flex items-center space-x-2 pointer-events-none ${showSyncToast ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
+          <CheckCircle2 size={16} />
+          <span className="text-sm font-bold">已同步至今日碎碎念</span>
+      </div>
+
       {/* Header */}
       <div className="bg-white/80 backdrop-blur p-6 rounded-t-[2.5rem] shadow-sm border-b border-warm-100 flex items-center justify-between z-10">
         <h2 className="text-xl font-rounded text-warm-800 font-bold flex items-center">
